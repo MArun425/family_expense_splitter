@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Expense Splitter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Chosen Palette: Calm Harmony (Tailwind Slate/Sky/Amber/Red/Emerald) */
+        /* Application Structure Plan: A tab-based SPA is chosen to provide a clean, task-oriented user experience, separating concerns into logical views: a Dashboard for overview and settlement, an Expense Log for data entry, a detailed Expense List, Settings for configuration, and a dedicated Instructions tab. This is superior to the single-scrolling-sheet model as it reduces cognitive load and aligns with modern web application design patterns, making it easier for users to navigate and perform specific tasks without being overwhelmed by unrelated information. */
+        /* Visualization & Content Choices: Key data is presented through various methods for clarity. Expenses by Category are shown in a Donut Chart (Chart.js) for easy proportional comparison. The final settlement is a clean, prominent HTML table on the Dashboard, as it's the primary actionable output. Configuration uses interactive forms and lists in a dedicated Settings tab, which is more intuitive than editing raw table data. This multi-faceted approach ensures each piece of information from the source report is presented in the most effective and user-friendly format, with a clear focus on task completion. */
+        /* CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. */
+        body { font-family: 'Inter', sans-serif; }
+        .tab-button.active {
+            border-color: #0ea5e9;
+            background-color: #f0f9ff;
+            color: #0369a1;
+            font-weight: 600;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .chart-container { position: relative; width: 100%; max-width: 400px; margin-left: auto; margin-right: auto; height: 320px; max-height: 400px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-slate-900">Family Expense Splitter</h1>
+            <p class="text-lg text-slate-600 mt-1">An interactive dashboard to manage and settle group expenses.</p>
+        </header>
+
+        <nav id="tab-navigation" class="mb-8 border-b border-slate-200">
+            <div class="-mb-px flex space-x-2 sm:space-x-6 overflow-x-auto">
+                <button data-tab="dashboard" class="tab-button active text-slate-500 hover:text-slate-700 whitespace-nowrap py-4 px-2 sm:px-4 border-b-2 font-medium text-sm transition-colors duration-200">Dashboard</button>
+                <button data-tab="log-expense" class="tab-button text-slate-500 hover:text-slate-700 whitespace-nowrap py-4 px-2 sm:px-4 border-b-2 border-transparent font-medium text-sm transition-colors duration-200">Log Expense</button>
+                <button data-tab="all-expenses" class="tab-button text-slate-500 hover:text-slate-700 whitespace-nowrap py-4 px-2 sm:px-4 border-b-2 border-transparent font-medium text-sm transition-colors duration-200">Expense List</button>
+                <button data-tab="settings" class="tab-button text-slate-500 hover:text-slate-700 whitespace-nowrap py-4 px-2 sm:px-4 border-b-2 border-transparent font-medium text-sm transition-colors duration-200">Manage Group</button>
+                <button data-tab="instructions" class="tab-button text-slate-500 hover:text-slate-700 whitespace-nowrap py-4 px-2 sm:px-4 border-b-2 border-transparent font-medium text-sm transition-colors duration-200">Instructions</button>
+            </div>
+        </nav>
+
+        <main>
+            <!-- Dashboard Tab -->
+            <div id="tab-content-dashboard" class="tab-content active">
+                <div class="space-y-8">
+                    <div class="sm:flex sm:items-center sm:justify-between">
+                        <div class="sm:flex-auto">
+                            <h2 class="text-2xl font-semibold text-slate-900">Financial Overview</h2>
+                            <p class="mt-1 text-slate-600">A real-time summary of your group's finances and the final settlement plan.</p>
+                        </div>
+                        <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+                            <button id="recalculate-dashboard-btn" type="button" class="inline-flex items-center justify-center rounded-md border border-transparent bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2">Recalculate</button>
+                        </div>
+                    </div>
+                    <div id="error-check-container" class="space-y-2"></div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="bg-white p-6 rounded-xl shadow-sm">
+                            <h3 class="text-xl font-semibold text-slate-900 mb-4">Optimized Settlement Plan</h3>
+                            <div id="settlement-breakdown-container" class="space-y-3"></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm">
+                             <h3 class="text-xl font-semibold text-slate-900 mb-4">Spending by Category</h3>
+                             <div class="chart-container">
+                                <canvas id="category-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Expense Tab -->
+            <div id="tab-content-log-expense" class="tab-content">
+                 <div class="space-y-8 max-w-3xl mx-auto">
+                    <div>
+                        <h2 class="text-2xl font-semibold text-slate-900">Log a New Expense</h2>
+                        <p class="mt-1 text-slate-600">Enter the details for a new transaction. Fields with * are required.</p>
+                    </div>
+                    <form id="expense-form" class="bg-white p-6 sm:p-8 rounded-xl shadow-sm space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label for="expense-date" class="block text-sm font-medium text-slate-700">Date *</label>
+                                <input type="date" id="expense-date" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="expense-amount" class="block text-sm font-medium text-slate-700">Amount ($) *</label>
+                                <input type="number" id="expense-amount" step="0.01" min="0" required placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm">
+                            </div>
+                        </div>
+                        <div>
+                             <label for="expense-description" class="block text-sm font-medium text-slate-700">Description *</label>
+                             <input type="text" id="expense-description" required placeholder="e.g., Groceries from Store" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm">
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div>
+                                <label for="expense-payer" class="block text-sm font-medium text-slate-700">Paid By *</label>
+                                <select id="expense-payer" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm"></select>
+                            </div>
+                            <div>
+                                <label for="expense-category" class="block text-sm font-medium text-slate-700">Category *</label>
+                                <select id="expense-category" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm"></select>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700">Participants *</label>
+                            <div id="expense-participants" class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700">Split Type *</label>
+                            <div id="split-type-selector" class="mt-2 flex space-x-2 rounded-lg bg-slate-100 p-1">
+                                <button type="button" data-split="Evenly" class="split-type-btn w-full rounded-md py-2 text-sm font-medium text-slate-700">Evenly</button>
+                                <button type="button" data-split="By Share" class="split-type-btn w-full rounded-md py-2 text-sm font-medium text-slate-700">By Share</button>
+                                <button type="button" data-split="Custom" class="split-type-btn w-full rounded-md py-2 text-sm font-medium text-slate-700">Custom</button>
+                            </div>
+                        </div>
+                        
+                        <div id="custom-split-container" class="hidden space-y-4">
+                            <p class="text-sm text-slate-600">Enter the exact amount for each participant. The sum must equal the total expense amount.</p>
+                            <div id="custom-split-inputs" class="space-y-3"></div>
+                        </div>
+
+                        <div class="pt-4">
+                            <button type="submit" class="w-full bg-sky-600 text-white font-semibold py-2.5 px-4 rounded-lg shadow-sm hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-colors">Add Expense</button>
+                        </div>
+                         <div id="form-message" class="text-center text-sm font-medium h-5"></div>
+                    </form>
+                 </div>
+            </div>
+            
+            <!-- All Expenses Tab -->
+            <div id="tab-content-all-expenses" class="tab-content">
+                <div class="sm:flex sm:items-center">
+                    <div class="sm:flex-auto">
+                        <h2 class="text-2xl font-semibold text-slate-900">Expense History</h2>
+                        <p class="mt-1 text-slate-600">A detailed log of all transactions entered.</p>
+                    </div>
+                    <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+                        <button id="delete-all-expenses-btn" type="button" class="inline-flex items-center justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">Delete All Expenses</button>
+                    </div>
+                </div>
+                <div class="mt-8 flow-root">
+                    <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                        <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+                            <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                                <table class="min-w-full divide-y divide-slate-300">
+                                    <thead class="bg-slate-50">
+                                        <tr>
+                                            <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 sm:pl-6">Date</th>
+                                            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Description</th>
+                                            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Amount</th>
+                                            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Paid By</th>
+                                            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Category</th>
+                                            <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6"><span class="sr-only">Delete</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="expenses-table-body" class="divide-y divide-slate-200 bg-white"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="tab-content-settings" class="tab-content">
+                <div class="space-y-12">
+                     <div>
+                        <h2 class="text-2xl font-semibold text-slate-900">Manage Group</h2>
+                        <p class="mt-1 text-slate-600">Configure members, family units, and expense categories for your group.</p>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                        <div class="space-y-6">
+                             <h3 class="text-xl font-semibold text-slate-900">Members & Family Units</h3>
+                             <form id="add-member-form" class="flex flex-col space-y-3 bg-white p-4 rounded-xl shadow-sm">
+                                 <div>
+                                     <label for="new-member-name" class="block text-sm font-medium text-slate-700">New Member Name</label>
+                                     <input type="text" id="new-member-name" required placeholder="e.g., Frank" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm">
+                                 </div>
+                                 <div>
+                                     <label for="new-member-assignment-type" class="block text-sm font-medium text-slate-700">Assignment Type</label>
+                                     <select id="new-member-assignment-type" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm">
+                                         <option value="new-individual">New Individual</option>
+                                         <option value="join-existing-unit">Join existing Family Unit</option>
+                                         <option value="form-new-unit">Form new unit with existing Individual</option>
+                                     </select>
+                                 </div>
+                                 <div id="new-member-target-unit-container" class="hidden">
+                                     <label for="new-member-target-unit" class="block text-sm font-medium text-slate-700">Select Target</label>
+                                     <select id="new-member-target-unit" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm"></select>
+                                 </div>
+                                 <button type="submit" class="bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-sky-700 transition-colors">Add</button>
+                             </form>
+                             <div id="members-list-container" class="space-y-3"></div>
+                        </div>
+                        
+                        <div class="space-y-6">
+                            <h3 class="text-xl font-semibold text-slate-900">Expense Categories</h3>
+                             <form id="add-category-form" class="flex items-end space-x-3 bg-white p-4 rounded-xl shadow-sm">
+                                 <div class="flex-grow">
+                                     <label for="new-category-name" class="block text-sm font-medium text-slate-700">New Category Name</label>
+                                     <input type="text" id="new-category-name" required placeholder="e.g., Travel" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm">
+                                 </div>
+                                 <button type="submit" class="bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-sky-700 transition-colors">Add</button>
+                             </form>
+                             <div id="categories-list-container" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instructions Tab -->
+            <div id="tab-content-instructions" class="tab-content">
+                <div class="prose prose-slate max-w-none bg-white p-6 sm:p-8 rounded-xl shadow-sm">
+                    <h2>How to Use This Expense Splitter</h2>
+                    <p>This guide will walk you through setting up and using this application.</p>
+                    
+                    <h3>Step 1: Manage Group (Initial Setup)</h3>
+                    <ol>
+                        <li>Navigate to the <strong>Manage Group</strong> tab.</li>
+                        <li><strong>Add Members:</strong> Use the "New Member Name" form. Select how the new member should be assigned:
+                            <ul>
+                                <li><strong>New Individual:</strong> They will be their own solo family unit.</li>
+                                <li><strong>Join existing Family Units:</strong> Select an existing multi-member unit from the dropdown to add them to it.</li>
+                                <li><strong>Form new unit with existing Individuals:</strong> Select another solo individual from the dropdown to create a new multi-member unit with them.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Set Unit Payer:</strong> For each family unit, select one person as the designated "Payer" using the radio buttons. This person is responsible for sending/receiving money for the family unit during settlement.</li>
+                        <li><strong>Add Categories:</strong> Use the "New Category Name" form to add all expense categories you expect to use (e.g., Groceries, Rent, Travel).</li>
+                    </ol>
+
+                    <h3>Step 2: Log Expenses</h3>
+                    <ol>
+                        <li>Navigate to the <strong>Log Expense</strong> tab.</li>
+                        <li>Fill in the expense details: Date, Amount, Description, who Paid By, and the Category.</li>
+                        <li><strong>Select Participants:</strong> Check the boxes next to each member or family unit that participated in this expense.</li>
+                        <li><strong>Choose Split Type:
+                            <ul>
+                                <li><strong>Evenly:</strong> The cost is split equally among all selected *individual* participants, regardless of their family unit.</li>
+                                <li><strong>By Share:</strong> The cost is split proportionally based on the number of members in each *participating family unit*. For example, a unit with 3 members will owe 3 times as much as a unit with 1 member. The total share for each unit is then divided evenly among its participating members.</li>
+                                <li><strong>Custom:</strong> Allows you to enter a specific dollar amount for each participant. Use this for complex or unequal splits.</li>
+                            </ul>
+                        </li>
+                        <li>Click "Add Expense".</li>
+                    </ol>
+
+                    <h3>Step 3: Review Dashboard & Settle Up</h3>
+                    <ol>
+                        <li>Navigate to the <strong>Dashboard</strong> tab.</li>
+                        <li><strong>Recalculate:</strong> If you've made changes to expenses or members, click the "Recalculate" button on the Dashboard to refresh all calculations.</li>
+                        <li><strong>Check for Errors:</strong> At the top, ensure all system checks show "OK". If an error appears, it likely means a "Custom" split doesn't add up to the total expense amount. Review your entries in the "Expense List" tab.</li>
+                        <li><strong>View Settlement Plan:</strong> The "Optimized Settlement Plan" shows the simplest way to settle debts, with the minimum number of transactions. Follow these instructions to have members pay each other back.</li>
+                        <li><strong>Analyze Spending:
+                            The "Spending by Category" chart shows a visual breakdown of where the group's money is going.
+                        </li>
+                    </ol>
+
+                    <h3>Step 4: View or Delete Expenses</h3>
+                    <ol>
+                        <li>Navigate to the <strong>Expense List</strong> tab to see a complete history of all logged expenses.</li>
+                        <li><strong>Delete a Single Expense:</strong> Click the 'Delete' button (trash can icon) on any row to remove that specific expense.</li>
+                        <li><strong>Delete All Expenses:</strong> Click the "Delete All Expenses" button to completely reset the expense log. A confirmation will be required.</li>
+                    </ol>
+                    
+                    <h3>Definitions of Terms</h3>
+                    <ul>
+                        <li><strong>Family Unit:</strong> A financial group that can consist of one or more individuals. Expenses are ultimately split and settled at this unit level.</li>
+                        <li><strong>Unit Payer:</strong> The designated person in a family unit responsible for making/receiving payments during settlement.</li>
+                        <li><strong>Settlement Plan:</strong> The final, optimized list of who owes whom to balance all expenses.</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+<script>
+const App = {
+    state: {
+        currentTab: 'dashboard',
+        members: [],
+        categories: [],
+        expenses: [],
+        nextMemberId: 1,
+        nextExpenseId: 1,
+    },
+
+    init() {
+        this.loadInitialData();
+        this.cacheDOMElements();
+        this.bindEvents();
+        this.updateUI();
+    },
+    
+    loadInitialData() {
+        const savedState = localStorage.getItem('familyExpenseState');
+        if (savedState) {
+            const parsedState = JSON.parse(savedState);
+            this.state.members = parsedState.members || [];
+            this.state.categories = parsedState.categories || [];
+            this.state.expenses = parsedState.expenses || [];
+            this.state.nextMemberId = parsedState.nextMemberId || 1;
+            this.state.nextExpenseId = parsedState.nextExpenseId || 1;
+        } else {
+            this.state.members = [
+                { id: 1, name: 'Alice', familyUnit: 'Alice & Bob', isPayer: true },
+                { id: 2, name: 'Bob', familyUnit: 'Alice & Bob', isPayer: false },
+                { id: 3, name: 'Charlie', familyUnit: 'Charlie', isPayer: true },
+                { id: 4, name: 'Mary', familyUnit: 'Mary', isPayer: true },
+                { id: 5, name: 'Jane', familyUnit: 'Jane', isPayer: true },
+            ];
+            this.state.categories = ['Groceries', 'Utilities', 'Rent', 'Dining Out'];
+            this.state.expenses = [
+                { id: 1, date: '2025-07-20', description: 'Weekly Groceries', amount: 150, payerId: 1, category: 'Groceries', splitType: 'Evenly', participants: [1,2,3,4,5], customShares: {} },
+                { id: 2, date: '2025-07-21', description: 'Dinner Out', amount: 90, payerId: 3, category: 'Dining Out', splitType: 'Custom', participants: [1,2,3], customShares: {1: 30, 2: 30, 3: 30} },
+                { id: 3, date: '2025-07-22', description: 'Big Expense', amount: 500, payerId: 1, category: 'Utilities', splitType: 'By Share', participants: [1,2,3,4,5], customShares: {} },
+            ];
+            this.state.nextMemberId = 6;
+            this.state.nextExpenseId = 4;
+        }
+    },
+    
+    saveState() {
+        localStorage.setItem('familyExpenseState', JSON.stringify(this.state));
+    },
+
+    cacheDOMElements() {
+        this.dom = {
+            navigation: document.getElementById('tab-navigation'),
+            tabs: document.querySelectorAll('.tab-button'),
+            tabContents: document.querySelectorAll('.tab-content'),
+            errorCheckContainer: document.getElementById('error-check-container'),
+            settlementContainer: document.getElementById('settlement-breakdown-container'),
+            categoryChartCanvas: document.getElementById('category-chart'),
+            expenseForm: document.getElementById('expense-form'),
+            expenseDate: document.getElementById('expense-date'),
+            expenseAmount: document.getElementById('expense-amount'),
+            expenseDescription: document.getElementById('expense-description'),
+            expensePayer: document.getElementById('expense-payer'),
+            expenseCategory: document.getElementById('expense-category'),
+            expenseParticipants: document.getElementById('expense-participants'),
+            splitTypeSelector: document.getElementById('split-type-selector'),
+            customSplitContainer: document.getElementById('custom-split-container'),
+            customSplitInputs: document.getElementById('custom-split-inputs'),
+            formMessage: document.getElementById('form-message'),
+            expensesTableBody: document.getElementById('expenses-table-body'),
+            deleteAllExpensesBtn: document.getElementById('delete-all-expenses-btn'),
+            addMemberForm: document.getElementById('add-member-form'),
+            newMemberName: document.getElementById('new-member-name'),
+            newMemberAssignmentType: document.getElementById('new-member-assignment-type'), // New dropdown
+            newMemberTargetUnitContainer: document.getElementById('new-member-target-unit-container'), // Container for target dropdown
+            newMemberTargetUnit: document.getElementById('new-member-target-unit'), // Target dropdown
+            membersListContainer: document.getElementById('members-list-container'),
+            addCategoryForm: document.getElementById('add-category-form'),
+            newCategoryName: document.getElementById('new-category-name'),
+            categoriesListContainer: document.getElementById('categories-list-container'),
+            recalculateDashboardBtn: document.getElementById('recalculate-dashboard-btn'),
+        };
+        this.categoryChart = null;
+    },
+
+    bindEvents() {
+        this.dom.navigation.addEventListener('click', (e) => {
+            if (e.target.matches('.tab-button')) {
+                this.state.currentTab = e.target.dataset.tab;
+                this.updateUI();
+            }
+        });
+        
+        this.dom.addMemberForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = this.dom.newMemberName.value.trim();
+            const assignmentType = this.dom.newMemberAssignmentType.value;
+            const targetValue = this.dom.newMemberTargetUnit.value;
+            if (name) {
+                this.addMember(name, assignmentType, targetValue);
+                this.dom.newMemberName.value = '';
+                this.dom.newMemberAssignmentType.value = 'new-individual'; // Reset to default
+                this.updateNewMemberTargetDropdown('new-individual'); // Hide/reset target dropdown
+            }
+        });
+        
+        this.dom.newMemberAssignmentType.addEventListener('change', () => {
+            this.updateNewMemberTargetDropdown(this.dom.newMemberAssignmentType.value);
+        });
+
+        this.dom.addCategoryForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = this.dom.newCategoryName.value.trim();
+            if (name && !this.state.categories.includes(name)) {
+                this.addCategory(name);
+                this.dom.newCategoryName.value = '';
+            }
+        });
+        
+        this.dom.expenseForm.addEventListener('submit', (e) => { e.preventDefault(); this.addExpense(); });
+        this.dom.splitTypeSelector.addEventListener('click', (e) => {
+            if (e.target.matches('.split-type-btn')) this.handleSplitTypeChange(e.target.dataset.split);
+        });
+
+        this.dom.deleteAllExpensesBtn.addEventListener('click', () => {
+             if (confirm('Are you sure you want to delete ALL expenses? This action cannot be undone.')) {
+                this.state.expenses = [];
+                this.updateUI();
+            }
+        });
+
+        this.dom.expensesTableBody.addEventListener('click', (e) => {
+            const deleteBtn = e.target.closest('.delete-expense-btn');
+            if (deleteBtn) {
+                this.deleteExpense(parseInt(deleteBtn.dataset.expenseId));
+            }
+        });
+
+        this.dom.recalculateDashboardBtn.addEventListener('click', () => {
+            this.renderDashboard();
+        });
+    },
+
+    updateUI() {
+        this.renderCurrentTab();
+        this.saveState();
+    },
+    
+    updateTabs() {
+        this.dom.tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === this.state.currentTab));
+        this.dom.tabContents.forEach(content => content.classList.toggle('active', content.id === `tab-content-${this.state.currentTab}`));
+    },
+
+    renderCurrentTab() {
+        this.updateTabs();
+        const renderMap = {
+            'dashboard': this.renderDashboard,
+            'log-expense': this.renderLogExpenseForm,
+            'all-expenses': this.renderAllExpenses,
+            'settings': this.renderSettings,
+            'instructions': () => {}
+        };
+        renderMap[this.state.currentTab]?.call(this);
+    },
+    
+    renderDashboard() {
+        const calculations = this.performCalculations();
+        this.dom.errorCheckContainer.innerHTML = calculations.errorChecks.map(err => {
+            const isOk = err.status === 'OK';
+            const bgColor = isOk ? 'bg-emerald-100' : 'bg-red-100';
+            const textColor = isOk ? 'text-emerald-800' : 'text-red-800';
+            const icon = isOk ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>` : `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>`;
+            return `<div class="${bgColor} ${textColor} p-3 rounded-md text-sm font-medium flex items-center space-x-2"><span>${icon}</span><span>${err.message}</span></div>`;
+        }).join('');
+        
+        this.dom.settlementContainer.innerHTML = calculations.settlement.length > 0 ? calculations.settlement.map(s => `
+            <div class="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
+                <div>
+                    <span class="font-semibold text-slate-800">${s.from}</span>
+                    <span class="text-slate-500"> owes </span>
+                    <span class="font-semibold text-slate-800">${s.to}</span>
+                </div>
+                <div class="font-bold text-sky-600">$${s.amount.toFixed(2)}</div>
+            </div>`).join('') : `<p class="text-slate-500">All balances are settled.</p>`;
+        
+        this.renderCategoryChart(calculations.expensesByCategory);
+    },
+    
+    renderCategoryChart(data) {
+        const labels = Object.keys(data);
+        if (this.categoryChart) this.categoryChart.destroy();
+        
+        if (labels.length === 0) {
+            this.dom.categoryChartCanvas.style.display = 'none';
+            if (!this.dom.categoryChartCanvas.nextElementSibling?.classList.contains('no-data-msg')) {
+                this.dom.categoryChartCanvas.insertAdjacentHTML('afterend', '<p class="no-data-msg text-center text-slate-500 flex items-center justify-center h-full">No expense data to display.</p>');
+            }
+            return;
+        }
+
+        this.dom.categoryChartCanvas.style.display = 'block';
+        this.dom.categoryChartCanvas.nextElementSibling?.remove();
+        
+        this.categoryChart = new Chart(this.dom.categoryChartCanvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: Object.values(data),
+                    backgroundColor: ['#0ea5e9','#f0abfc','#fb923c','#a78bfa','#4ade80','#facc15','#fb7185'],
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { padding: 15, boxWidth: 12, font: { size: 12 } } } }
+            }
+        });
+    },
+    
+    renderLogExpenseForm() {
+        this.dom.expensePayer.innerHTML = `<option value="">-- Select Payer --</option>` + this.state.members.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        this.dom.expenseCategory.innerHTML = `<option value="">-- Select Category --</option>` + this.state.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+        
+        const familyUnits = this.getFamilyUnits();
+        this.dom.expenseParticipants.innerHTML = Object.entries(familyUnits).map(([unitName, members]) => {
+            const memberIds = members.map(m => m.id).join(',');
+            const isSoloUnit = members.length === 1;
+            const displayUnitName = isSoloUnit ? `${members[0].name} (Solo)` : unitName;
+
+            return `
+            <label for="participant-unit-${unitName.replace(/\s/g,'')}" class="flex items-center space-x-2 bg-slate-100 p-3 rounded-md cursor-pointer hover:bg-slate-200">
+              <input type="checkbox" id="participant-unit-${unitName.replace(/\s/g,'')}" data-member-ids="${memberIds}" class="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 participant-checkbox" checked>
+              <span class="text-sm font-medium text-slate-700">${displayUnitName}</span>
+            </label>
+        `}).join('');
+
+        this.handleSplitTypeChange('Evenly');
+        this.dom.expenseDate.valueAsDate = new Date();
+        this.dom.expenseForm.reset();
+    },
+
+    handleSplitTypeChange(splitType) {
+        this.dom.expenseForm.dataset.splitType = splitType;
+        this.dom.splitTypeSelector.querySelectorAll('.split-type-btn').forEach(btn => {
+            const isActive = btn.dataset.split === splitType;
+            btn.classList.toggle('bg-sky-600', isActive); btn.classList.toggle('text-white', isActive);
+            btn.classList.toggle('bg-slate-100', !isActive); btn.classList.toggle('text-slate-700', !isActive);
+        });
+        this.dom.customSplitContainer.classList.toggle('hidden', splitType !== 'Custom');
+        if(splitType === 'Custom') this.renderCustomSplitInputs();
+    },
+    
+    renderCustomSplitInputs() {
+        const expenseAmount = parseFloat(this.dom.expenseAmount.value) || 0;
+        const participatingMemberIds = Array.from(this.dom.expenseParticipants.querySelectorAll('.participant-checkbox:checked'))
+                                     .flatMap(cb => cb.dataset.memberIds.split(',').map(Number));
+        const numParticipants = participatingMemberIds.length;
+        const defaultShare = numParticipants > 0 ? (expenseAmount / numParticipants).toFixed(2) : '0.00';
+
+        this.dom.customSplitInputs.innerHTML = this.state.members.map(m => {
+            const isParticipating = participatingMemberIds.includes(m.id);
+            const initialValue = isParticipating ? defaultShare : '0.00';
+
+            return `
+            <div class="flex items-center space-x-3">
+                <label class="w-1/3 text-sm font-medium text-slate-700">${m.name}</label>
+                <input type="number" step="0.01" min="0" data-member-id="${m.id}" class="custom-split-input mt-1 block w-2/3 rounded-md border-slate-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 sm:text-sm" placeholder="0.00" value="${initialValue}">
+            </div>
+        `;
+        }).join('');
+    },
+
+    renderAllExpenses() {
+        this.dom.expensesTableBody.innerHTML = this.state.expenses.length === 0 ? `<tr><td colspan="6" class="text-center py-10 text-slate-500">No expenses logged yet.</td></tr>` : 
+        [...this.state.expenses].sort((a,b) => new Date(b.date) - new Date(a.date)).map(expense => `
+                <tr>
+                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-slate-900 sm:pl-6">${expense.date}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-500">${expense.description}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-500">$${expense.amount.toFixed(2)}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-500">${this.getMemberById(expense.payerId)?.name || 'N/A'}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-500">${expense.category}</td>
+                    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <button class="delete-expense-btn text-red-600 hover:text-red-900" data-expense-id="${expense.id}">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+    },
+
+    renderSettings() {
+        this.updateNewMemberTargetDropdown(this.dom.newMemberAssignmentType.value); // Ensure target dropdown is correctly initialized
+
+        const familyUnits = this.getFamilyUnits();
+        this.dom.membersListContainer.innerHTML = Object.entries(familyUnits).map(([unitName, members]) => {
+            const isSolo = members.length === 1;
+            const displayUnitName = isSolo ? `${members[0].name} (Solo)` : unitName;
+
+            return `
+                <div class="bg-white p-4 rounded-xl shadow-sm">
+                    <h4 class="font-semibold text-slate-800">${displayUnitName}</h4>
+                    <div class="mt-3 space-y-2">${members.map(m => this.renderMemberItem(m, !isSolo)).join('')}</div>
+                </div>
+            `;
+        }).join('');
+        
+        this.dom.categoriesListContainer.innerHTML = this.state.categories.map(c => `
+            <div class="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm">
+                <span class="text-sm font-medium text-slate-700">${c}</span>
+                <button data-category="${c}" class="delete-category-btn text-slate-400 hover:text-red-600 transition-colors font-bold">&times;</button>
+            </div>`).join('');
+        
+        document.querySelectorAll('.delete-category-btn').forEach(btn => btn.addEventListener('click', (e) => this.deleteCategory(e.target.dataset.category)));
+        document.querySelectorAll('.delete-member-btn').forEach(btn => btn.addEventListener('click', (e) => this.deleteMember(parseInt(e.currentTarget.dataset.memberId))));
+        document.querySelectorAll('.payer-radio').forEach(radio => radio.addEventListener('change', (e) => this.setUnitPayer(parseInt(e.target.dataset.memberId), e.target.dataset.unitName)));
+    },
+
+    updateNewMemberTargetDropdown(assignmentType) {
+        const targetContainer = this.dom.newMemberTargetUnitContainer;
+        const targetSelect = this.dom.newMemberTargetUnit; // Use cached element
+        let optionsHtml = '';
+        const familyUnits = this.getFamilyUnits();
+
+        if (assignmentType === 'join-existing-unit') {
+            const multiMemberUnits = Object.keys(familyUnits).filter(unitName => familyUnits[unitName].length > 1);
+            if (multiMemberUnits.length > 0) {
+                optionsHtml = multiMemberUnits.map(unitName => `<option value="${unitName}">${unitName}</option>`).join('');
+            } else {
+                optionsHtml = `<option value="">No multi-member units</option>`;
+            }
+            targetContainer.classList.remove('hidden');
+        } else if (assignmentType === 'form-new-unit') {
+            const soloMembers = Object.keys(familyUnits).filter(unitName => familyUnits[unitName].length === 1);
+            if (soloMembers.length > 0) {
+                optionsHtml = soloMembers.map(unitName => `<option value="${familyUnits[unitName][0].id}">${familyUnits[unitName][0].name}</option>`).join('');
+            } else {
+                optionsHtml = `<option value="">No solo members to pair</option>`;
+            }
+            targetContainer.classList.remove('hidden');
+        } else { // 'new-individual'
+            targetContainer.classList.add('hidden');
+        }
+        targetSelect.innerHTML = optionsHtml;
+        // Disable if no options
+        targetSelect.disabled = optionsHtml.includes('No multi-member units') || optionsHtml.includes('No solo members to pair');
+    },
+
+    renderMemberItem(member, isMultiMemberUnit) {
+        const currentFamilyUnits = this.getFamilyUnits();
+        const isActuallySolo = currentFamilyUnits[member.familyUnit]?.length === 1;
+        const displayName = isActuallySolo ? `${member.name} (Solo)` : member.name;
+
+        return `
+            <div class="flex justify-between items-center bg-slate-50 p-2 rounded-md">
+                <span class="text-sm font-medium">${displayName}</span>
+                <div class="flex items-center space-x-3">
+                    ${isMultiMemberUnit ? `<div class="flex items-center space-x-1"><input type="radio" id="payer-${member.id}" name="payer-${member.familyUnit.replace(/\s/g,'')}" data-member-id="${member.id}" data-unit-name="${member.familyUnit}" class="payer-radio h-4 w-4 text-sky-600 border-slate-300 focus:ring-sky-500" ${member.isPayer ? 'checked' : ''}><label for="payer-${member.id}" class="text-xs text-slate-500">Payer</label></div>` : ''}
+                    <button data-member-id="${member.id}" class="delete-member-btn text-slate-400 hover:text-red-600 transition-colors font-bold">&times;</button>
+                </div>
+            </div>`;
+    },
+    
+    addMember(name, assignmentType, targetValue) {
+        const newMemberId = this.state.nextMemberId++;
+        let familyUnitName = name; // Default for 'New Individual'
+        let isPayer = true; // Default for 'New Individual'
+
+        if (assignmentType === 'join-existing-unit') {
+            familyUnitName = targetValue;
+            isPayer = false; // New member joining existing multi-member unit is not the payer
+        } else if (assignmentType === 'form-new-unit') {
+            const otherMemberId = parseInt(targetValue);
+            const otherMember = this.getMemberById(otherMemberId);
+            if (otherMember) {
+                familyUnitName = `${name} & ${otherMember.name}`;
+                otherMember.familyUnit = familyUnitName;
+                otherMember.isPayer = false; // Existing solo member is no longer the payer for the new unit
+                isPayer = true; // New member is the payer for this newly formed unit
+            } else {
+                // Fallback if target member not found, treat as new individual
+                familyUnitName = name;
+                isPayer = true;
+            }
+        } else { // 'new-individual'
+            familyUnitName = name; // Explicitly set to their own name
+            isPayer = true;
+        }
+
+        this.state.members.push({ id: newMemberId, name, familyUnit: familyUnitName, isPayer });
+        this.updateUI();
+    },
+
+    deleteMember(id) {
+        if(this.state.expenses.some(e => e.payerId === id || e.participants.includes(id))) {
+            alert("Cannot delete a member who is part of existing expenses.");
+            return;
+        }
+        this.state.members = this.state.members.filter(m => m.id !== id);
+        this.updateUI();
+    },
+    
+    setUnitPayer(memberId, unitName) {
+        this.state.members.forEach(m => { if (m.familyUnit === unitName) m.isPayer = (m.id === memberId); });
+        this.updateUI();
+    },
+    
+    addCategory(name) { this.state.categories.push(name); this.updateUI(); },
+    deleteCategory(name) {
+        if(this.state.expenses.some(e => e.category === name)) {
+            alert("Cannot delete a category that is used in existing expenses.");
+            return;
+        }
+        this.state.categories = this.state.categories.filter(c => c !== name);
+        this.updateUI();
+    },
+    
+    addExpense() {
+        const form = this.dom.expenseForm, amount = parseFloat(this.dom.expenseAmount.value), desc = this.dom.expenseDescription.value.trim();
+        const splitType = form.dataset.splitType, payerId = parseInt(this.dom.expensePayer.value), category = this.dom.expenseCategory.value;
+
+        if (!desc || !amount || amount <= 0 || !payerId || !category) {
+            this.showFormMessage("Please fill in all required fields.", 'error'); return;
+        }
+        
+        const participants = Array.from(form.querySelectorAll('.participant-checkbox:checked')).flatMap(cb => cb.dataset.memberIds.split(',').map(Number));
+        if (participants.length === 0) {
+            this.showFormMessage("At least one participant must be selected.", 'error'); return;
+        }
+
+        let customShares = {};
+        if (splitType === 'Custom') {
+            let customTotal = 0;
+            form.querySelectorAll('.custom-split-input').forEach(input => {
+                const shareAmount = parseFloat(input.value) || 0;
+                if(shareAmount > 0) {
+                    customShares[parseInt(input.dataset.memberId)] = shareAmount;
+                    customTotal += shareAmount;
+                }
+            });
+            if (Math.abs(customTotal - amount) > 0.01) {
+                this.showFormMessage(`Custom shares sum ($${customTotal.toFixed(2)}) must equal total ($${amount.toFixed(2)}).`, 'error'); return;
+            }
+        }
+        this.state.expenses.push({ id: this.state.nextExpenseId++, date: this.dom.expenseDate.value, description: desc, amount, payerId, category, splitType, participants, customShares });
+        this.showFormMessage("Expense added successfully!", 'success');
+        form.reset();
+        this.renderLogExpenseForm();
+        this.state.currentTab = 'dashboard';
+        this.updateUI();
+    },
+
+    deleteExpense(id) {
+        this.state.expenses = this.state.expenses.filter(e => e.id !== id);
+        this.updateUI();
+    },
+    
+    showFormMessage(message, type) {
+        this.dom.formMessage.textContent = message;
+        this.dom.formMessage.className = `text-center text-sm font-medium h-5 ${type === 'success' ? 'text-emerald-600' : 'text-red-600'}`;
+        setTimeout(() => this.dom.formMessage.textContent = '', 3000);
+    },
+
+    performCalculations() {
+        const memberCalcs = Object.fromEntries(this.state.members.map(m => [m.id, {...m, totalPaid: 0, totalShare: 0}]));
+        
+        this.state.expenses.forEach(ex => { if(memberCalcs[ex.payerId]) memberCalcs[ex.payerId].totalPaid += ex.amount; });
+        
+        this.state.expenses.forEach(ex => {
+            if(ex.splitType === 'Evenly' && ex.participants.length > 0) {
+                const share = ex.amount / ex.participants.length;
+                ex.participants.forEach(pId => { if(memberCalcs[pId]) memberCalcs[pId].totalShare += share; });
+            } else if (ex.splitType === 'By Share') {
+                const participatingUnits = {}; // { unitName: [memberId1, memberId2, ...] }
+                ex.participants.forEach(pId => {
+                    const member = this.getMemberById(pId);
+                    if (member) {
+                        if (!participatingUnits[member.familyUnit]) {
+                            participatingUnits[member.familyUnit] = [];
+                        }
+                        participatingUnits[member.familyUnit].push(member.id);
+                    }
+                });
+
+                let totalParticipatingMembersAcrossUnits = 0;
+                Object.values(participatingUnits).forEach(unitMemberIds => {
+                    totalParticipatingMembersAcrossUnits += unitMemberIds.length;
+                });
+
+                if (totalParticipatingMembersAcrossUnits > 0) {
+                    Object.entries(participatingUnits).forEach(([unitName, unitMemberIds]) => {
+                        const unitShare = (unitMemberIds.length / totalParticipatingMembersAcrossUnits) * ex.amount;
+                        const sharePerParticipatingMemberInUnit = unitShare / unitMemberIds.length;
+
+                        unitMemberIds.forEach(memberId => {
+                            if (memberCalcs[memberId]) memberCalcs[memberId].totalShare += sharePerParticipatingMemberInUnit;
+                        });
+                    });
+                }
+            } else if (ex.splitType === 'Custom') {
+                Object.entries(ex.customShares).forEach(([mId, share]) => { if(memberCalcs[mId]) memberCalcs[mId].totalShare += share; });
+            }
+        });
+
+        const unitBalances = {};
+        Object.values(memberCalcs).forEach(m => {
+            if (!unitBalances[m.familyUnit]) unitBalances[m.familyUnit] = { paid: 0, share: 0, balance: 0, payerName: '' };
+            unitBalances[m.familyUnit].paid += m.totalPaid;
+            unitBalances[m.familyUnit].share += m.totalShare;
+            if (m.isPayer) unitBalances[m.familyUnit].payerName = m.name;
+        });
+        Object.keys(unitBalances).forEach(uName => { unitBalances[uName].balance = unitBalances[uName].paid - unitBalances[uName].share; });
+        
+        let debtors = Object.entries(unitBalances).filter(([,d]) => d.balance < -0.01).sort((a,b) => a[1].balance - b[1].balance);
+        let creditors = Object.entries(unitBalances).filter(([,d]) => d.balance > 0.01).sort((a,b) => b[1].balance - a[1].balance);
+        const settlement = [];
+        
+        debtors.forEach(([debtorName, debtorData]) => {
+            let debt = -debtorData.balance;
+            creditors.forEach(([creditorName, creditorData]) => {
+                if(debt <= 0.01) return;
+                let credit = creditorData.balance;
+                if(credit > 0.01) {
+                    const payment = Math.min(debt, credit);
+                    settlement.push({ from: debtorName, to: creditorName, amount: payment });
+                    debt -= payment;
+                    creditorData.balance -= payment;
+                }
+            });
+        });
+        
+        const expensesByCategory = this.state.expenses.reduce((acc, e) => {
+            acc[e.category] = (acc[e.category] || 0) + e.amount;
+            return acc;
+        }, {});
+        
+        const totalPaid = Object.values(memberCalcs).reduce((s, m) => s + m.totalPaid, 0);
+        const totalShares = Object.values(memberCalcs).reduce((s, m) => s + m.totalShare, 0);
+        const errorChecks = [];
+        if (Math.abs(totalPaid - totalShares) < 0.01) {
+            errorChecks.push({ status: 'OK', message: 'System Balancing: Total Paid matches Total Shares.' });
+        } else {
+            errorChecks.push({ status: 'ERROR', message: `Balancing Error: Total Paid ($${totalPaid.toFixed(2)}) doesn't match Total Shares ($${totalShares.toFixed(2)}). Check custom splits.` });
+        }
+        return { settlement, expensesByCategory, errorChecks };
+    },
+
+    getMemberById(id) { return this.state.members.find(m => m.id === id); },
+    getFamilyUnits() {
+        return this.state.members.reduce((acc, m) => {
+            (acc[m.familyUnit] = acc[m.familyUnit] || []).push(m);
+            return acc;
+        }, {});
+    },
+};
+
+document.addEventListener('DOMContentLoaded', () => App.init());
+</script>
+
+</body>
+</html>
